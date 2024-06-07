@@ -7,12 +7,14 @@
 #include "tri.h"
 #include "rtx_material.h"
 #include "sphere.h"
+#include "UART.h"
 #include <math.h>
 
 void SystemClock_Config(void);
 
 #define WIDTH 80
 #define HEIGHT 60
+#define MV_SPD 10
 
 #define CUBE_RADIUS 20
 
@@ -76,12 +78,32 @@ const rtx_material metal = {
 };
 
 vec3 cube_center = {-25, 35, 0};
-
-
+vec3 camera_pos = {0.0, -25.0, 30.0};
 
 vec3 samples[WIDTH * HEIGHT];
 // Set to 0 in actual implementation
 int total_samples_taken = 0;
+
+static uint8_t recv_char;
+static uint8_t move_flag;
+
+// ISR for recieving data from USART2
+void USART2_IRQHandler() {
+	// Data ready to be recieved, ready to be transmitted
+	if((USART2->ISR & USART_ISR_RXNE) && (USART2->ISR & USART_ISR_TC)) {
+		// Set interrupt flag high
+		recv_char = USART2->RDR;
+
+		if((recv_char == 'w') || (recv_char == 'a') || (recv_char == 's') || (recv_char == 'd')) {
+			move_flag = 1;
+		} /*else {
+			USART2->TDR = recv_char;
+		}*/
+	}
+}
+
+
+
 
 void render() {
 
@@ -165,8 +187,6 @@ void render() {
     int maxBounces = 5;
     int samples_per_pixel = 1;
 
-    vec3 camera_pos = {0.0, -25.0, 30.0};
-
     for(int j = HEIGHT - 1; j >= 0; j--){
         for(int i = 0; i < WIDTH; i++){
 
@@ -226,6 +246,7 @@ int main(void)
   /* Configure the system clock */
   SystemClock_Config();
 
+  UART_init();
   vga_init();
 
   vga_clear_screen();
@@ -233,6 +254,36 @@ int main(void)
   while(1) {
 	  total_samples_taken++;
 	  render();
+
+	  if (move_flag){
+		  move_flag = 0;
+
+		  switch (recv_char) {
+		  case 'w':
+			  vec3 forward = {0, MV_SPD, 0};
+			  camera_pos = add(camera_pos, forward);
+			  break;
+		  case 'a':
+			  vec3 left = {-MV_SPD, 0, 0};
+			  camera_pos = add(camera_pos, left);
+			  break;
+		  case 's':
+			  vec3 back = {0, -MV_SPD, 0};
+			  camera_pos = add(camera_pos, back);
+			  break;
+		  case 'd':
+			  vec3 right = {MV_SPD, 0, 0};
+			  camera_pos = add(camera_pos, right);
+			  break;
+		  }
+
+		  vga_clear_screen();
+		  total_samples_taken = 0;
+		  vec3 clear = {0,0,0};
+		  for (int i = 0; i < WIDTH * HEIGHT; i++) {
+			  samples[i] = clear;
+		  }
+	  }
   }
 
 }
